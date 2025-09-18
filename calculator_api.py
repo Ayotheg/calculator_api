@@ -1,151 +1,214 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welder Calculator</title>
-  <style>
-   .calculator {
-  width: 220px;
-  margin: 20px auto;
-  padding: 10px;
-  border: 2px solid #333;
-  border-radius: 10px;
-  background: #f9f9f9;
-}
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+import re
+import math
+from typing import Union
 
-#display {
-  width: 100%;
-  height: 40px;
-  margin-bottom: 10px;
-  font-size: 20px;
-  text-align: right;
-  padding: 5px;
-}
+app = FastAPI(title="Calculator API", version="1.0.0")
 
-.buttons {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
-}
+# CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://ayotheg.github.io/calculator.html",
+        "*"  # Remove this in production, add your specific domains
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
-button {
-  height: 50px;
-  font-size: 18px;
-  font-weight: bold;
-  cursor: pointer;
-  border: none;
-  background: #eee;
-  border-radius: 5px;
-}
+def clean_number_input(value: str) -> float:
+    """Clean and validate number input"""
+    try:
+        # Convert to string first
+        clean_value = str(value).strip()
+        
+        # Remove any HTML/CSS contamination
+        clean_value = re.sub(r'<[^>]+>', '', clean_value)  # Remove HTML tags
+        clean_value = re.sub(r'[a-zA-Z-]+:\s*[^;]+[;]?', '', clean_value)  # Remove CSS properties
+        clean_value = re.sub(r'width:\s*\d+px[;]?', '', clean_value)  # Specific fix for width CSS
+        clean_value = re.sub(r'[a-zA-Z]+', '', clean_value)  # Remove any remaining letters
+        
+        # Remove extra spaces and special characters except numbers, decimal, minus
+        clean_value = re.sub(r'[^\d.-]', '', clean_value)
+        
+        # Handle multiple decimal points
+        parts = clean_value.split('.')
+        if len(parts) > 2:
+            clean_value = parts[0] + '.' + ''.join(parts[1:])
+        
+        # Handle multiple minus signs
+        if clean_value.count('-') > 1:
+            if clean_value.startswith('-'):
+                clean_value = '-' + clean_value.replace('-', '')
+            else:
+                clean_value = clean_value.replace('-', '')
+        
+        # Validate the cleaned value
+        if not clean_value or clean_value in ['-', '.', '-.']:
+            raise ValueError("Invalid number format")
+        
+        # Convert to float
+        result = float(clean_value)
+        
+        # Check for infinity or NaN
+        if math.isinf(result) or math.isnan(result):
+            raise ValueError("Invalid number: infinity or NaN")
+            
+        return result
+        
+    except (ValueError, TypeError) as e:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid number format: '{value}'. Error: {str(e)}"
+        )
 
-button:hover {
-  background: #ddd;
-}
-
-  </style>
-</head>
-<body>
- <div class="calculator">
-  <input type="text" id="display" disabled />
-
-  <div class="buttons">
-    <button onclick="appendNumber(7)">7</button>
-    <button onclick="appendNumber(8)">8</button>
-    <button onclick="appendNumber(9)">9</button>
-    <button onclick="setOperation('dividir')">÷</button>
-
-    <button onclick="appendNumber(4)">4</button>
-    <button onclick="appendNumber(5)">5</button>
-    <button onclick="appendNumber(6)">6</button>
-    <button onclick="setOperation('multiplicar')">×</button>
-
-    <button onclick="appendNumber(1)">1</button>
-    <button onclick="appendNumber(2)">2</button>
-    <button onclick="appendNumber(3)">3</button>
-    <button onclick="setOperation('restar')">-</button>
-
-    <button onclick="appendNumber(0)">0</button>
-    <button onclick="clearDisplay()">C</button>
-    <button onclick="calculateResult()">=</button>
-    <button onclick="setOperation('sumar')">+</button>
-  </div>
-</div>
-
-
-  <script>
-    let current = "";
-let firstNum = null;
-let operation = null;
-
-const baseURL = "https://calculator-api-o5d2.onrender.com"; // ✅ API URL
-
-function appendNumber(num) {
-  current += num;
-  document.getElementById("display").value = current;
-}
-
-function setOperation(op) {
-  firstNum = current;
-  current = "";
-  operation = op;
-}
-
-async function calculateResult() {
-  if (!firstNum || !operation || current === "") return;
-
-  try {
-    // Try API call
-    const url = `${baseURL}/${operation}?num1=${firstNum}&num2=${current}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("API Error");
-
-    const data = await response.json();
-
-    if (data.resultado !== undefined) {
-      document.getElementById("display").value = data.resultado;
-      current = data.resultado;
-    } else {
-      throw new Error("Invalid API response");
-    }
-  } catch (err) {
-    // ✅ Local fallback if API fails
-    let result;
-    const num1 = parseFloat(firstNum);
-    const num2 = parseFloat(current);
-
-    switch (operation) {
-      case "sumar":
-        result = num1 + num2;
-        break;
-      case "restar":
-        result = num1 - num2;
-        break;
-      case "multiplicar":
-        result = num1 * num2;
-        break;
-      case "dividir":
-        result = num2 !== 0 ? num1 / num2 : "Err";
-        break;
-      default:
-        result = "Err";
+@app.get("/")
+def home():
+    return {
+        "message": "✅ Calculator API is running!",
+        "endpoints": {
+            "sumar": "/sumar?num1=5&num2=3",
+            "restar": "/restar?num1=10&num2=4", 
+            "multiplicar": "/multiplicar?num1=6&num2=7",
+            "dividir": "/dividir?num1=15&num2=3"
+        }
     }
 
-    document.getElementById("display").value = result;
-    current = result;
-  }
+@app.get("/test")
+def test():
+    return {"status": "working", "message": "API is healthy"}
 
-  firstNum = null;
-  operation = null;
-}
+@app.get("/sumar")
+def sumar(num1: str = Query(...), num2: str = Query(...)):
+    """Add two numbers"""
+    try:
+        n1 = clean_number_input(num1)
+        n2 = clean_number_input(num2)
+        result = n1 + n2
+        
+        return {
+            "operation": "addition",
+            "num1": n1,
+            "num2": n2,
+            "resultado": result,
+            "expression": f"{n1} + {n2} = {result}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-function clearDisplay() {
-  current = "";
-  firstNum = null;
-  operation = null;
-  document.getElementById("display").value = "";
-}
+@app.get("/restar")  
+def restar(num1: str = Query(...), num2: str = Query(...)):
+    """Subtract two numbers"""
+    try:
+        n1 = clean_number_input(num1)
+        n2 = clean_number_input(num2)
+        result = n1 - n2
+        
+        return {
+            "operation": "subtraction", 
+            "num1": n1,
+            "num2": n2,
+            "resultado": result,
+            "expression": f"{n1} - {n2} = {result}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-  </script>
-</body>
-</html>
+@app.get("/multiplicar")
+def multiplicar(num1: str = Query(...), num2: str = Query(...)):
+    """Multiply two numbers"""
+    try:
+        n1 = clean_number_input(num1)
+        n2 = clean_number_input(num2)
+        result = n1 * n2
+        
+        return {
+            "operation": "multiplication",
+            "num1": n1, 
+            "num2": n2,
+            "resultado": result,
+            "expression": f"{n1} × {n2} = {result}"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/dividir")
+def dividir(num1: str = Query(...), num2: str = Query(...)):
+    """Divide two numbers"""
+    try:
+        n1 = clean_number_input(num1)
+        n2 = clean_number_input(num2)
+        
+        if n2 == 0:
+            raise HTTPException(
+                status_code=400, 
+                detail="Division by zero is not allowed"
+            )
+        
+        result = n1 / n2
+        
+        return {
+            "operation": "division",
+            "num1": n1,
+            "num2": n2, 
+            "resultado": result,
+            "expression": f"{n1} ÷ {n2} = {result}"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# Advanced calculator endpoint
+@app.get("/calculate")
+def calculate(expression: str = Query(...)):
+    """Evaluate a mathematical expression safely"""
+    try:
+        # Clean the expression
+        expr = str(expression).strip()
+        
+        # Remove CSS/HTML contamination
+        expr = re.sub(r'<[^>]+>', '', expr)
+        expr = re.sub(r'[a-zA-Z-]+:\s*[^;]+[;]?', '', expr)
+        expr = re.sub(r'width:\s*\d+px[;]?', '', expr)
+        
+        # Replace symbols
+        expr = expr.replace('×', '*').replace('÷', '/')
+        expr = expr.replace('x', '*').replace('X', '*')
+        
+        # Validate characters
+        if not re.match(r'^[0-9+\-*/().\s]+$', expr):
+            raise ValueError("Expression contains invalid characters")
+        
+        # Evaluate safely
+        allowed_names = {"__builtins__": {}}
+        result = eval(expr, allowed_names, {})
+        
+        if math.isinf(result):
+            result = "Infinity"
+        elif math.isnan(result):
+            result = "Error"
+        
+        return {
+            "expression": expression,
+            "cleaned_expression": expr,
+            "resultado": result
+        }
+        
+    except ZeroDivisionError:
+        raise HTTPException(status_code=400, detail="Division by zero")
+    except (SyntaxError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid expression: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Calculation error: {str(e)}")
+
+# Health check
+@app.get("/health")
+def health():
+    return {"status": "healthy", "api": "calculator"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
