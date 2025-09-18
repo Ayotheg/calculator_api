@@ -6,7 +6,7 @@ app = FastAPI()
 # Allow frontend (your website) to call this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5500/calculator.html"],   # Change "*" to your domain in production
+    allow_origins=["https://ayotheg.github.io/welderskit/calculator.html"],   # Change "*" to your domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
